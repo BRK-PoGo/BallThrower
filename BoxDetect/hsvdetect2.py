@@ -1,12 +1,163 @@
+import math
+import sys
 from time import sleep
 
 import cv2
 import numpy as np
 import os
+import time
 import imutils
 
 def contour2Points(contour):
-    pass
+    for point in contour:
+        point = point.tolist()
+        #print(point)
+        #print(point[0][0])
+    #print("\n")
+
+def getDistance(pixlwidth, actLength):
+    focal = 559.542
+    #actLength = 35
+    #print("Length: " + str(pixlwidth))
+    #print("Focal: " + str(focal))
+    #print("ActualLength: " + str(actLength))
+    t1 = (pixlwidth * focal)
+    #print("Length * Focal = " + str(t1))
+    t2 = t1 / actLength
+    #print("... / actualLength => " + str(t2))
+
+    return (int) ((actLength * focal)/pixlwidth)
+
+
+
+
+def getBoxDist(outerP, outerY):
+    # Yellow-Side: 20/12.5 = 1.6
+    # pink-Side: 34.5/12.5 = 2.76
+    if(outerY is not None):
+        sideLengthY, sideWdithY = getContourLength(outerY)
+        yRatio = sideLengthY / sideWdithY
+        print("yRatio => " + str(yRatio))
+    if (outerP is not None):
+        sideLengthP, sideWdithP = getContourLength(outerP)
+        pRatio = sideLengthP / sideWdithP
+        print("pRatio => " + str(pRatio))
+
+    if (outerY is not None and (yRatio >= 1.5 and yRatio <= 1.8)):
+        actualLength = 20
+        distance = getDistance(sideLengthY, actualLength)
+        # print("Length: " + str(sideLength))
+        print("Distance: " + str(distance))
+        return distance
+    elif (outerP is not None and (pRatio >= 2.5 and pRatio <= 3)):
+        actualLength = 35
+        distance = getDistance(sideLengthP, actualLength)
+        print("Distance: " + str(distance))
+        return distance
+    return None
+
+
+def getContourLength(outerPoints):
+    [uL, uR, lL, lR] = outerPoints
+
+    length1 = getDist(uL, uR)
+    length2 = getDist(lL, lR)
+
+    height1 = getDist(lL, uL)
+    height2 = getDist(lR, uR)
+
+    return length1, height1
+
+
+
+def getOuterPoints(contour, center):
+    #print("Center:\t" + str(center))
+    points = cv2.convexHull(contour, clockwise=True)
+    #print("Points: " + str(points))
+
+    uLeft = []
+    uRight = []
+    lLeft = []
+    lRight = []
+
+    for point in points:
+        tPoint = point.tolist()[0]
+        #print("orientation tPoint: " + str(tPoint))
+        if(tPoint[0] < center[0]):
+            if (tPoint[1] < center[1]):
+                uLeft.append(tPoint)
+            else:
+                lLeft.append(tPoint)
+        else:
+            if (tPoint[1] < center[1]):
+                uRight.append(tPoint)
+            else:
+
+                lRight.append(tPoint)
+
+    #print("Upper Left")
+    #print(str(uLeft))
+
+    #print("Lower Left")
+    #print(str(lLeft))
+
+    #print("Upper Right")
+    #print(str(uRight))
+
+    #print("Lower Right")
+    #print(str(lRight))
+
+    if(uLeft.__len__() > 0):
+        upperLeft = uLeft[0]
+
+    if (lLeft.__len__() > 0):
+        lowerLeft = lLeft[0]
+
+    if (uRight.__len__() > 0):
+        upperRight = uRight[0]
+
+    if (lRight.__len__() > 0):
+        lowerRight = lRight[0]
+
+    i = 1
+    while(i < uLeft.__len__()):
+        tPoint = uLeft[i]
+        #print('upperLeft: ' + str(tPoint))
+        if(getDist(tPoint, center) > getDist(upperLeft, center)):
+            upperLeft = tPoint
+        i += 1
+
+    i = 1
+    while (i < lLeft.__len__()):
+        tPoint = lLeft[i]
+        #print('lowerLeft: ' + str(tPoint))
+        if (getDist(tPoint, center) > getDist(lowerLeft, center)):
+            lowerLeft = tPoint
+        i += 1
+
+    i = 1
+    while (i < uRight.__len__()):
+        tPoint = uRight[i]
+        #print('upperRight: ' + str(tPoint))
+        if (getDist(tPoint, center) > getDist(upperRight, center)):
+            upperRight = tPoint
+        i += 1
+
+    i = 1
+    while (i < lRight.__len__()):
+        tPoint = lRight[i]
+        #print('lowerRight: ' + str(tPoint))
+        if (getDist(tPoint, center) > getDist(lowerRight, center)):
+            lowerRight = tPoint
+        i += 1
+
+    return [upperLeft, upperRight, lowerLeft, lowerRight]
+
+def getDist(point1, point2):
+    #print('Point1: ' + str(point1))
+    #print('point2: ' + str(point2))
+
+    return(math.sqrt((point1[0]-point2[0])**2 + (point1[1]-point2[1])**2))
 
 def getContourCenter(contour):
     if not contour.any():
@@ -27,8 +178,8 @@ def colorFiltering(initialized):
     vl = 'V Low'
     vh = 'V High'
 
-    # create window for the slidebars
-    cv2.namedWindow(barsWindow, flags=cv2.WINDOW_AUTOSIZE)
+    # uncomment to see coloring window
+    #cv2.namedWindow(barsWindow, flags=cv2.WINDOW_AUTOSIZE)
 
     # create the sliders
 
@@ -166,13 +317,23 @@ def nothing(x):
 
 def calcContours(frame, hsv, width, height):
     # Yellow
-    yellowLow = np.array([0, 128, 150])
-    yellowHigh = np.array([37, 255, 255])
+
+    # Interior night
+    #yellowLow = np.array([0, 165, 136])
+    #yellowHigh = np.array([76, 255, 255])
+
+    # Interior day
+    yellowLow = np.array([0, 101, 155])
+    yellowHigh = np.array([33, 186, 255])
+
     yellow = getSpecificColMask(yellowLow, yellowHigh, frame, hsv, width, height)
 
     # Pink
-    pinkLow = np.array([161, 70, 103])
-    pinkHigh = np.array([179, 191, 255])
+    # Interior night
+    #pinkLow = np.array([161, 70, 103])
+    #pinkHigh = np.array([179, 191, 255])
+    pinkLow = np.array([122, 70, 64])
+    pinkHigh = np.array([179, 255, 184])
     pink = getSpecificColMask(pinkLow, pinkHigh, frame, hsv, width, height)
 
     ret, threshold = cv2.threshold(yellow, 100, 255, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
@@ -214,6 +375,7 @@ def setup(picTest):
 
 
 
+
 def main():
     # Picture instead
     picTest = False
@@ -222,6 +384,11 @@ def main():
     frame, cap, height, width = setup(picTest)
 
     initialized = False
+
+    start = time.time()
+    #The time delta in which I want to print
+    delta = 3
+    contIni = False
 
     while(True):
 
@@ -243,37 +410,70 @@ def main():
         contoursY, yellow, contoursP, pink = calcContours(frame, hsv, width, height)
 
         compP = contors2Points(contoursP)
+        compY = contors2Points(contoursY)
+
+        now = time.time()
+        if (contIni == False):
+            outerP = None
+            outerY = None
+
         if (compP.any()):
             hullP = cv2.convexHull(compP)
-            # print('Hull: ' + str(hull))
             cv2.drawContours(frame, [hullP], -1, (0, 0, 255), 2)
+
             pCX, pCY = getContourCenter(hullP)
             cv2.circle(frame, (pCX, pCY), 5, (0, 0, 255), 3)
 
-        compY = contors2Points(contoursY)
+            if (outerP):
+                for point in outerP:
+                    cv2.circle(frame, (point[0], point[1]), 4, (127, 0, 127), 1)
+        else:
+            outerP = None
+
         if (compY.any()):
             hullY = cv2.convexHull(compY)
             cv2.drawContours(frame, [hullY], -1, (255, 0, 0), 2)
+
             yCX, yCY = getContourCenter(hullY)
-            cv2.circle(frame, (yCX, yCY), 5, (255, 0, 0), 3)
+
+
+            if (outerY):
+                for point in outerY:
+                    cv2.circle(frame, (point[0], point[1]), 4, (0, 255, 0), 1)
+        else:
+            outerY = None
+
+        if (now - start >= delta):
+            if compY.any():
+                outerY = getOuterPoints(hullY, [yCX, yCY])
+            elif compP.any():
+                outerP = getOuterPoints(hullP, [pCX, pCY])
+            distance = getBoxDist(outerP, outerY)
+            print("Distance from Kamera to Box = " + str(distance))
+            start = time.time()
+
+            contIni = True
 
 
 
-
-        cv2.imshow('Camera', frame)
 
         composite = cv2.addWeighted(pink, 1.1, yellow, 0.6, 0)
-        cv2.imshow('comp', composite)
+
+
+        if (display):
+            cv2.imshow('Camera', frame)
+            cv2.imshow('comp', composite)
         # cv2.imshow('result', maskedFrame)
 
         # check for q to quit program with 5ms delay
         if cv2.waitKey(5) & 0xFF == ord('q'):
             break
         #sleep(0.25)
-
     cap.release()
     cv2.destroyAllWindows()
 
 
-
+display = True
 main()
+
+
